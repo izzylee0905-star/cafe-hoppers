@@ -694,18 +694,68 @@ window.CafeHoppers={
 };
 
 /* ================= live data from the Google Forms ================= */
-/* Paste your Apps Script web app URL between the quotes. Leave it empty to use the sample numbers above. */
-var SCORES_URL='';
-var REFRESH_SECONDS=60;
+/* Both response sheets are shared as "anyone with the link can view". */
+var SHEETS={
+  attendees:'https://docs.google.com/spreadsheets/d/1c2iPRc6QeQ2kJ2m1Z0RDKjQ9859EBoZqAO_JqGlgM1U/gviz/tq?tqx=out:csv',
+  employees:'https://docs.google.com/spreadsheets/d/1hhEHRb0hccs-Hz8cEsGmspwfuYghuj_eADLgxMXeafI/gviz/tq?tqx=out:csv'
+};
+var WINDOW_HOURS=2;        // only count reports from the last 2 hours
+var REFRESH_SECONDS=60;    // check for new reports every minute
+var FORM_CAFES={grit:'grit',saxbys:'saxbys',starbucks:'starbucks',camellias:'camellias'};
+
+function parseCSV(t){
+  var rows=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){
+    var ch=t[i];
+    if(q){ if(ch==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=ch }
+    else if(ch==='"') q=true;
+    else if(ch===','){row.push(f);f=''}
+    else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&t[i+1]==='\n')i++; row.push(f);rows.push(row);row=[];f='' }
+    else f+=ch;
+  }
+  if(f||row.length){row.push(f);rows.push(row)}
+  return rows;
+}
+// Google Forms timestamps look like 11/3/2026 14:05:22
+function parseTime(s){
+  var m=String(s).match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+)(?::(\d+))?/);
+  return m?new Date(+m[3],m[1]-1,+m[2],+m[4],+m[5],+(m[6]||0)).getTime():NaN;
+}
+// Averages (1-5 scale) per cafe from one sheet's CSV
+function summarize(csv,since){
+  var rows=parseCSV(csv), out={};
+  if(rows.length<2) return out;
+  var head=rows[0].map(function(h){return h.toLowerCase()});
+  var col=function(w){for(var i=0;i<head.length;i++)if(head[i].indexOf(w)!==-1)return i;return -1};
+  var tC=col('timestamp'),cC=col('cafe'),sC=col('full'),nC=col('nois');
+  if(tC<0||cC<0||sC<0||nC<0) return out;
+  var sums={};
+  rows.slice(1).forEach(function(r){
+    var t=parseTime(r[tC]), id=FORM_CAFES[norm(r[cC]).replace(/\s/g,'')], seats=+r[sC], noise=+r[nC];
+    if(!(t>=since)||!id||!seats||!noise) return;
+    var x=sums[id]||(sums[id]={seats:0,noise:0,n:0}); x.seats+=seats; x.noise+=noise; x.n++;
+  });
+  Object.keys(sums).forEach(function(id){var x=sums[id]; out[id]={seats:x.seats/x.n,noise:x.noise/x.n,reports:x.n}});
+  return out;
+}
+function getCSV(url){return fetch(url).then(function(r){if(!r.ok)throw new Error(r.status);return r.text()}).catch(function(e){console.warn('cafe hoppers: could not load',url,e);return ''})}
+function toPercent(avg){return Math.round((avg-1)*25)} // 1 -> 0%, 5 -> 100%
+
 function loadScores(){
-  if(!SCORES_URL) return;
-  fetch(SCORES_URL).then(function(r){return r.json()}).then(function(d){
+  Promise.all([getCSV(SHEETS.attendees),getCSV(SHEETS.employees)]).then(function(r){
+    var since=Date.now()-WINDOW_HOURS*3600*1000;
+    var att=summarize(r[0],since), emp=summarize(r[1],since), report={};
     CAFES.forEach(function(c){
-      var s=d.cafes&&d.cafes[c.id];
-      if(!s||!s.combined) return; // no recent reports: keep the current numbers
-      window.CafeHoppers.setBusyness(c.locations[0].id,s.combined.seats,s.combined.noise);
+      var groups=[att[c.id],emp[c.id]].filter(Boolean);
+      report[c.id]={attendees:att[c.id]||null,employees:emp[c.id]||null};
+      if(!groups.length) return; // no recent reports: keep the current numbers
+      // 50/50 between attendees and employees (or whichever group has reports)
+      var seats=groups.reduce(function(a,g){return a+g.seats},0)/groups.length;
+      var noise=groups.reduce(function(a,g){return a+g.noise},0)/groups.length;
+      window.CafeHoppers.setBusyness(c.locations[0].id,toPercent(seats),toPercent(noise));
     });
-  }).catch(function(e){console.warn('cafe hoppers: could not load scores',e)});
+    window.CafeHoppers.lastReport=report; // type CafeHoppers.lastReport in the browser console to compare groups
+  });
 }
 loadScores();
 setInterval(loadScores,REFRESH_SECONDS*1000);
