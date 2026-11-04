@@ -246,19 +246,8 @@ var CAFES=[
        [3,'convenient, but the seating fills up quickly at lunch.','Priya S.'],
        [4,'friendly baristas and a good spot for a quick catch-up.','Ethan W.'],
        [4,'great for a short study break, not so much for long sessions.','Zoe M.']
-     ]},
-    {id:'starbucks-corner',label:'the corner',address:'1601 University Ave, Charlottesville, VA 22903',lat:38.0355,lng:-78.4990,
-     desc:'a quick stop on University Ave, right by the Corner. great for grabbing a drink between classes or meeting up with friends.',
-     hours:['6 AM - 9 PM','5:30 AM - 8:30 PM','5:30 AM - 8:30 PM','5:30 AM - 8:30 PM','5:30 AM - 8:30 PM','5:30 AM - 8 PM','5:30 AM - 9 PM'],note:'',
-     tables:75,noise:70,
-     reviews:[
-       [4,'great meet-up spot on the Corner. gets busy right after classes.','Olivia K.'],
-       [3,'always packed in the afternoon, so go early if you need a table.','Tyler G.'],
-       [5,'love grabbing a drink here before heading to the Lawn.','Chloe F.'],
-       [4,'plenty of drink options and the staff is quick.','Marcus J.'],
-       [4,'good coffee, but the noise picks up in the evening.','Isabel C.']
      ]}]},
-  {id:'grit',name:'grit coffee',q:'Grit Coffee',bg:'bg-grit',photo:true,tagline:'specialty roasts. quiet focus.',trendy:false,quiet:true,
+  {id:'grit',name:'grit',q:'Grit Coffee',bg:'bg-grit',photo:true,tagline:'specialty roasts. quiet focus.',trendy:false,quiet:true,
    locations:[{
      id:'grit-nau',label:'nau hall',address:'1540 Jefferson Park Ave, Charlottesville, VA 22903',lat:38.0316,lng:-78.5054,
      desc:'a campus coffee stop at Nau Hall serving espresso drinks, tea, and pastries. weekday hours follow the UVA semester schedule, so it’s closed on weekends.',
@@ -283,17 +272,6 @@ var CAFES=[
        [5,'quiet, cozy, and the coffee is fresh. my favorite spot to work.','Elena D.'],
        [4,'creative drinks and plenty of room to spread out.','Theo M.'],
        [5,'great place to bring a friend and a laptop.','Maddie Q.']
-     ]},
-    {id:'camellias-10th',label:'10th st nw',address:'116 10th St NW, Charlottesville, VA 22903',lat:38.0333222,lng:-78.4939865,
-     desc:'a newer spot just off West Main, close to UVA, with house-roasted coffee, tea, and fresh pastries.',
-     hours:['8 AM - 5 PM','8 AM - 5 PM','8 AM - 5 PM','8 AM - 5 PM','8 AM - 5 PM','8 AM - 5 PM','8 AM - 5 PM'],note:'',
-     tables:35,noise:40,
-     reviews:[
-       [5,'new favorite spot close to campus. the matcha is so good!','Jordan K.'],
-       [4,'relaxed atmosphere and never too crowded.','Aisha B.'],
-       [4,'great for a quick stop between classes and errands.','Ben R.'],
-       [5,'love the outdoor patio on a nice day.','Clara W.'],
-       [4,'the pastries are fresh and the staff is welcoming.','Victor L.']
      ]}]}
 ];
 
@@ -408,7 +386,7 @@ function availHTML(c){
   var l=locOf(c), lv=level(l.tables), n=Math.round(l.noise/10);
   return locsHTML(c)+
     '<div class="status"><i class="dot '+lv+'" id="a-dot"></i><span id="a-txt">'+LABEL[lv].long+'</span></div>'+
-    '<div class="lab" id="a-tl">'+l.tables+'% of tables at capacity</div>'+
+    '<div class="lab" id="a-tl">'+l.tables+'% of seats full</div>'+
     '<div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+l.tables+'"><i id="a-bar" style="width:'+l.tables+'%"></i></div>'+
     '<div class="lab" id="a-nl" style="margin-top:30px">'+l.noise+'% noise level</div>'+
     '<div class="chart" id="a-chart" aria-hidden="true">'+BAR_H.map(function(h,i){return '<i class="'+(i<n?'on':'')+'" style="height:'+h+'px;--i:'+i+'"></i>'}).join('')+'</div>';
@@ -696,7 +674,7 @@ function refresh(){
     var loc=locOf(byId(state.cafe)), lv=level(loc.tables), n=Math.round(loc.noise/10);
     var dot=$('#a-dot',cur); if(!dot) return;
     dot.className='dot '+lv; $('#a-txt',cur).textContent=LABEL[lv].long;
-    $('#a-tl',cur).textContent=loc.tables+'% of tables at capacity';
+    $('#a-tl',cur).textContent=loc.tables+'% of seats full';
     $('#a-bar',cur).style.width=loc.tables+'%';
     $('#a-nl',cur).textContent=loc.noise+'% noise level';
     var bars=$('#a-chart',cur).children; for(var i=0;i<bars.length;i++)bars[i].classList.toggle('on',i<n);
@@ -714,6 +692,23 @@ window.CafeHoppers={
     refresh();
   }
 };
+
+/* ================= live data from the Google Forms ================= */
+/* Paste your Apps Script web app URL between the quotes. Leave it empty to use the sample numbers above. */
+var SCORES_URL='';
+var REFRESH_SECONDS=60;
+function loadScores(){
+  if(!SCORES_URL) return;
+  fetch(SCORES_URL).then(function(r){return r.json()}).then(function(d){
+    CAFES.forEach(function(c){
+      var s=d.cafes&&d.cafes[c.id];
+      if(!s||!s.combined) return; // no recent reports: keep the current numbers
+      window.CafeHoppers.setBusyness(c.locations[0].id,s.combined.seats,s.combined.noise);
+    });
+  }).catch(function(e){console.warn('cafe hoppers: could not load scores',e)});
+}
+loadScores();
+setInterval(loadScores,REFRESH_SECONDS*1000);
 
 go('welcome');
 })();
